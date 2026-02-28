@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autota"
+version = "0.1.0"
+description = "LLM-powered parameterized assessment generator for STEM courses"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "anthropic>=0.18.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "typer>=0.9.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",  # For better CLI output
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+autota = "autota.cli:app"
+
+[tool.setuptools]
+packages = ["autota", "autota.verify"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

@@ -1,0 +1,13 @@
+problem_type: kmap_simplification
+topic: "Karnaugh Map Simplification"
+description: "Simplify a Boolean function given as a set of minterms using a 4-variable K-map"
+num_variants: 5  # small for testing, will scale to 70+
+parameters:
+  num_variables: 4
+  num_minterms: [6, 10]  # range: min 6, max 10
+  num_dont_cares: [0, 3]  # range
+  require_edge_wrap: true  # at least one group must wrap around K-map edges
+  variables: ["A", "B", "C", "D"]
+reference_material: "materials/hw5_kmap.pdf"  # optional, path to a past assignment for style/difficulty reference
+answer_format: "boolean_expression"  # tells the verifier what kind of answer to expect
+difficulty: "medium"
