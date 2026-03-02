@@ -44,6 +44,21 @@ materials/
 output/
 docs/archive/
 
+# Database - ignore database files but keep directory structure
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Logs
+*.log
+/tmp/*.log
+
 # OS
 .DS_Store
 Thumbs.db
