@@ -41,7 +41,11 @@ def _parse_dt(s: Optional[str]):
     if not s:
         return None
     try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        # SQLite stores naive UTC strings; make them timezone-aware for arithmetic
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except Exception:
         return None
 
