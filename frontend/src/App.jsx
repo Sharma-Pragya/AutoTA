@@ -5,10 +5,16 @@ import QuestionPage from './screens/Question';
 import MainPage from './screens/MainPage';
 import AttestationPage from './screens/Attestation';
 import ReviewPage from './screens/Review';
+import InstructorDashboard from './screens/InstructorDashboard';
 import { getAssignment, saveAnswer, submitAnswers, retryAssignment } from './api';
 import { buildMenuStructure } from './utils';
 
 function App() {
+  // Path-based routing: /instructor goes to instructor UI
+  if (window.location.pathname === '/instructor') {
+    return <InstructorDashboard />;
+  }
+
   const [screen, setScreen] = useState("loading");
   const [studentId, setStudentId] = useState(null);
   const [studentName, setStudentName] = useState("");
