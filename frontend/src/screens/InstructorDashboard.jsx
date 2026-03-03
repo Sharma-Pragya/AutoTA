@@ -270,7 +270,7 @@ function Dashboard({ data, onSelectAssignment }) {
       <div style={S.card}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={S.cardTitle}>All Assignments</div>
-          <button style={S.btnExport}>Export CSV</button>
+          <button style={S.btnExport} onClick={() => window.open('/api/instructor/gradebook/export', '_blank')}>Export CSV</button>
         </div>
         <table style={S.table}>
           <thead>

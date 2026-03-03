@@ -8,6 +8,7 @@ import ReviewPage from './screens/Review';
 import InstructorDashboard from './screens/InstructorDashboard';
 import QuizApp from './quiz/QuizApp';
 import InstructorQuiz from './instructor/screens/InstructorQuiz';
+import ErrorBoundary from './components/ErrorBoundary';
 import { getAssignment, saveAnswer, submitAnswers, retryAssignment } from './api';
 import { buildMenuStructure } from './utils';
 
@@ -17,17 +18,25 @@ function App() {
   const _params = new URLSearchParams(window.location.search);
 
   if (_path === '/instructor') {
-    return <InstructorDashboard />;
+    return <ErrorBoundary><InstructorDashboard /></ErrorBoundary>;
   }
 
   const _quizMatch = _path.match(/^\/quiz\/([A-Z0-9]+)$/i);
   if (_quizMatch) {
-    return <QuizApp code={_quizMatch[1].toUpperCase()} studentId={_params.get('sid')} />;
+    return (
+      <ErrorBoundary message="Something went wrong with the quiz. Please refresh and try again.">
+        <QuizApp code={_quizMatch[1].toUpperCase()} studentId={_params.get('sid')} />
+      </ErrorBoundary>
+    );
   }
 
   const _instrQuizMatch = _path.match(/^\/instructor\/quiz\/([A-Z0-9]+)$/i);
   if (_instrQuizMatch) {
-    return <InstructorQuiz code={_instrQuizMatch[1].toUpperCase()} />;
+    return (
+      <ErrorBoundary>
+        <InstructorQuiz code={_instrQuizMatch[1].toUpperCase()} />
+      </ErrorBoundary>
+    );
   }
 
   const [screen, setScreen] = useState("loading");

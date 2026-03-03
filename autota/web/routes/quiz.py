@@ -17,9 +17,10 @@ import random
 import string
 from datetime import datetime, timezone
 from typing import Dict, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from autota.web.db import get_db_connection
+from autota.web.db import db_conn
+from autota.web.auth import require_instructor
 from autota.verify.registry import get_verifier
 from autota.models import ProblemVariant
 from uuid import UUID
@@ -366,14 +367,12 @@ class CreateQuizRequest(BaseModel):
 
 @router.post("/api/quiz/{code}/join")
 async def join_quiz(code: str, request: JoinRequest):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         session = _auto_close_if_expired(cursor, session)
 
         if session["status"] in ("closed", "review"):
-            conn.close()
             raise HTTPException(status_code=403, detail="Quiz is closed")
 
         student_id = request.student_id
@@ -387,7 +386,6 @@ async def join_quiz(code: str, request: JoinRequest):
             "VALUES (?, ?, ?)",
             (session["id"], student_id, json.dumps(variant_map))
         )
-        # Update variant map if it changed
         if cursor.rowcount == 0:
             cursor.execute(
                 "UPDATE quiz_participants SET variant_assignments_json = ? "
@@ -396,7 +394,6 @@ async def join_quiz(code: str, request: JoinRequest):
             )
         conn.commit()
 
-        # Build problems list for response (no solutions)
         problems = _get_problems(cursor, session["assignment_id"])
         problems_out = []
         for p in problems:
@@ -413,68 +410,47 @@ async def join_quiz(code: str, request: JoinRequest):
             })
 
         secs_remaining = _seconds_remaining(session)
-
-        # Get best scores if student already submitted
         best = _best_scores_for_student(cursor, session["id"], student_id)
-        conn.close()
         return {
             "quiz_session_id": session["id"],
             "status": session["status"],
-            "quiz_title": None,  # fetched via assignment
+            "quiz_title": None,
             "time_remaining_seconds": secs_remaining,
             "problems": problems_out,
             "best_scores": {pid: s["score"] for pid, s in best.items()},
         }
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/quiz/{code}/status")
 async def quiz_status(code: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         session = _auto_close_if_expired(cursor, session)
         conn.commit()
-        conn.close()
         return {
             "status": session["status"],
             "time_remaining_seconds": _seconds_remaining(session),
         }
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/quiz/{code}/submit")
 async def submit_quiz(code: str, request: SubmitRequest):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         session = _auto_close_if_expired(cursor, session)
         conn.commit()
 
         if session["status"] != "active":
-            conn.close()
             raise HTTPException(status_code=403, detail="quiz_closed")
 
         secs = _seconds_remaining(session)
         if secs is not None and secs <= 0:
-            conn.close()
             raise HTTPException(status_code=403, detail="quiz_closed")
 
         student_id = request.student_id
 
-        # Get participant's variant map
         cursor.execute(
             "SELECT variant_assignments_json FROM quiz_participants "
             "WHERE quiz_session_id = ? AND student_id = ?",
@@ -482,7 +458,6 @@ async def submit_quiz(code: str, request: SubmitRequest):
         )
         part_row = cursor.fetchone()
         if not part_row:
-            # Auto-join if they skipped the join step (e.g. direct URL)
             variant_map = _draw_variants_for_student(cursor, student_id, session["id"], session["assignment_id"])
             cursor.execute(
                 "INSERT OR IGNORE INTO quiz_participants (quiz_session_id, student_id, variant_assignments_json) "
@@ -492,7 +467,6 @@ async def submit_quiz(code: str, request: SubmitRequest):
         else:
             variant_map = json.loads(part_row["variant_assignments_json"] or "{}")
 
-        # Grade all answers
         problems = _get_problems(cursor, session["assignment_id"])
         scores = {}
         total_pts = sum(p["points"] for p in problems)
@@ -514,35 +488,21 @@ async def submit_quiz(code: str, request: SubmitRequest):
 
         total_score = total_earned / total_pts if total_pts else 0.0
 
-        # Determine attempt number
         cursor.execute(
             "SELECT COALESCE(MAX(attempt_number), 0) FROM quiz_submissions "
             "WHERE quiz_session_id = ? AND student_id = ?",
             (session["id"], student_id)
         )
-        max_attempt = cursor.fetchone()[0]
-        attempt_number = max_attempt + 1
+        attempt_number = cursor.fetchone()[0] + 1
 
-        # Mark all previous as not-best
-        cursor.execute(
-            "UPDATE quiz_submissions SET is_best = 0 "
-            "WHERE quiz_session_id = ? AND student_id = ?",
-            (session["id"], student_id)
-        )
-
-        # Get current best per problem
+        # Compute per-problem best (merging previous attempts with current)
         prev_best = _best_scores_for_student(cursor, session["id"], student_id)
-
-        # Compute new best per problem (merge with current attempt)
         new_best_per_problem: Dict[str, dict] = {}
         for p in problems:
             pid = p["id"]
             this_score = scores.get(pid, {}).get("score", 0.0)
             prev = prev_best.get(pid, {}).get("score", 0.0)
-            if this_score >= prev:
-                new_best_per_problem[pid] = scores[pid]
-            else:
-                new_best_per_problem[pid] = prev_best[pid]
+            new_best_per_problem[pid] = scores[pid] if this_score >= prev else prev_best[pid]
 
         best_total_earned = sum(
             new_best_per_problem.get(p["id"], {}).get("score", 0.0) * p["points"]
@@ -550,20 +510,25 @@ async def submit_quiz(code: str, request: SubmitRequest):
         )
         best_total_score = best_total_earned / total_pts if total_pts else 0.0
 
-        # Insert submission
+        # is_best: mark previous submissions not-best, then set correctly below
+        cursor.execute(
+            "UPDATE quiz_submissions SET is_best = 0 WHERE quiz_session_id = ? AND student_id = ?",
+            (session["id"], student_id)
+        )
+
         now = _now_iso()
+        # is_best = 1 only if this attempt's total equals the new best total
+        is_best = 1 if round(total_score, 4) >= round(best_total_score, 4) else 0
         cursor.execute(
             "INSERT INTO quiz_submissions "
             "(quiz_session_id, student_id, attempt_number, answers_json, scores_json, "
             "total_score, total_points_earned, is_best, submitted_at, graded_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (session["id"], student_id, attempt_number,
              json.dumps(request.answers), json.dumps(scores),
-             round(total_score, 4), round(total_earned, 4), now, now)
+             round(total_score, 4), round(total_earned, 4), is_best, now, now)
         )
-
         conn.commit()
-        conn.close()
 
         return {
             "attempt_number": attempt_number,
@@ -574,28 +539,18 @@ async def submit_quiz(code: str, request: SubmitRequest):
             "best_total_score": round(best_total_score, 4),
             "time_remaining_seconds": secs,
         }
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Instructor endpoints ──────────────────────────────────────────────────────
 
-@router.post("/api/instructor/quiz/create")
+@router.post("/api/instructor/quiz/create", dependencies=[Depends(require_instructor)])
 async def create_quiz(request: CreateQuizRequest):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        # Verify assignment exists
+    with db_conn() as conn:
+        cursor = conn.cursor()
         cursor.execute("SELECT id FROM assignments WHERE id = ?", (request.assignment_id,))
         if not cursor.fetchone():
-            conn.close()
             raise HTTPException(status_code=404, detail="Assignment not found")
 
-        # Generate unique 6-char code
         for _ in range(20):
             code = "QZ" + "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
             cursor.execute("SELECT id FROM quiz_sessions WHERE code = ?", (code,))
@@ -609,24 +564,15 @@ async def create_quiz(request: CreateQuizRequest):
         )
         quiz_id = cursor.lastrowid
         conn.commit()
-        conn.close()
         return {"quiz_session_id": quiz_id, "code": code, "status": "pending"}
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/instructor/quiz/{code}/start")
+@router.post("/api/instructor/quiz/{code}/start", dependencies=[Depends(require_instructor)])
 async def start_quiz(code: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         if session["status"] != "pending":
-            conn.close()
             raise HTTPException(status_code=400, detail=f"Cannot start: status is {session['status']}")
         now = _now_iso()
         cursor.execute(
@@ -634,29 +580,18 @@ async def start_quiz(code: str):
             (now, session["id"])
         )
         conn.commit()
-        # Compute expires_at
-        limit = int(session["time_limit_seconds"] or 600)
-        expires_at = datetime.fromisoformat(now.replace("Z", "+00:00"))
         from datetime import timedelta
-        expires_at = (expires_at + timedelta(seconds=limit)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        conn.close()
+        limit = int(session["time_limit_seconds"] or 600)
+        expires_at = (datetime.fromisoformat(now.replace("Z", "+00:00")) + timedelta(seconds=limit)).strftime("%Y-%m-%dT%H:%M:%SZ")
         return {"status": "active", "started_at": now, "expires_at": expires_at}
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/instructor/quiz/{code}/close")
+@router.post("/api/instructor/quiz/{code}/close", dependencies=[Depends(require_instructor)])
 async def close_quiz(code: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         if session["status"] not in ("active", "pending"):
-            conn.close()
             raise HTTPException(status_code=400, detail=f"Cannot close: status is {session['status']}")
         now = _now_iso()
         cursor.execute(
@@ -665,45 +600,28 @@ async def close_quiz(code: str):
         )
         _write_best_scores_to_grades(cursor, session["id"])
         conn.commit()
-        conn.close()
         return {"status": "closed", "closed_at": now}
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/instructor/quiz/{code}/review")
+@router.post("/api/instructor/quiz/{code}/review", dependencies=[Depends(require_instructor)])
 async def set_review(code: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         if session["status"] != "closed":
-            conn.close()
             raise HTTPException(status_code=400, detail="Quiz must be closed before review")
         cursor.execute(
             "UPDATE quiz_sessions SET status = 'review' WHERE id = ?",
             (session["id"],)
         )
         conn.commit()
-        conn.close()
         return {"status": "review"}
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/instructor/quiz/{code}/live")
+@router.get("/api/instructor/quiz/{code}/live", dependencies=[Depends(require_instructor)])
 async def get_live_stats(code: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         session = _auto_close_if_expired(cursor, session)
         conn.commit()
@@ -793,7 +711,6 @@ async def get_live_stats(code: str):
             if r["id"] not in submitted_ids
         ]
 
-        conn.close()
         return {
             "status": session["status"],
             "time_remaining_seconds": secs,
@@ -807,19 +724,12 @@ async def get_live_stats(code: str):
             "recent_submissions": recent,
             "not_submitted": not_submitted[:50],
         }
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/instructor/quiz/{code}/results")
+@router.get("/api/instructor/quiz/{code}/results", dependencies=[Depends(require_instructor)])
 async def get_results(code: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         session = _auto_close_if_expired(cursor, session)
         conn.commit()
@@ -930,7 +840,6 @@ async def get_results(code: str):
                 "common_errors": common_errors,
             })
 
-        conn.close()
         return {
             "status": session["status"],
             "submitted_count": submitted_count,
@@ -941,20 +850,13 @@ async def get_results(code: str):
             "improvement_rate": round(improvement_rate, 3),
             "problems": problems_out,
         }
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/instructor/quiz/{code}/meta")
+@router.get("/api/instructor/quiz/{code}/meta", dependencies=[Depends(require_instructor)])
 async def get_quiz_meta(code: str):
     """Returns quiz metadata for the instructor pending/control screen."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with db_conn() as conn:
+        cursor = conn.cursor()
         session = _get_session(cursor, code)
         session = _auto_close_if_expired(cursor, session)
         conn.commit()
@@ -968,7 +870,6 @@ async def get_quiz_meta(code: str):
         total_enrolled = cursor.execute("SELECT COUNT(*) FROM students").fetchone()[0]
         secs = _seconds_remaining(session)
 
-        conn.close()
         return {
             "quiz_session_id": session["id"],
             "code": session["code"],
@@ -983,9 +884,3 @@ async def get_quiz_meta(code: str):
             "total_pts": sum(p["points"] for p in problems),
             "total_enrolled": total_enrolled,
         }
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))

@@ -50,27 +50,32 @@ export async function retryAssignment(studentId, assignmentId) {
 
 // ── Instructor API ──────────────────────────────────────────────────────────
 
+function instructorHeaders() {
+  const token = import.meta.env.VITE_INSTRUCTOR_TOKEN || '';
+  return token ? { 'X-Instructor-Token': token } : {};
+}
+
 export async function getInstructorDashboard() {
-  const response = await fetch(`${API_BASE}/instructor/dashboard`);
+  const response = await fetch(`${API_BASE}/instructor/dashboard`, { headers: instructorHeaders() });
   return response.json();
 }
 
 export async function getInstructorGradebook() {
-  const response = await fetch(`${API_BASE}/instructor/gradebook`);
+  const response = await fetch(`${API_BASE}/instructor/gradebook`, { headers: instructorHeaders() });
   return response.json();
 }
 
 export async function getInstructorAssignment(assignmentId) {
-  const response = await fetch(`${API_BASE}/instructor/assignment/${assignmentId}`);
+  const response = await fetch(`${API_BASE}/instructor/assignment/${assignmentId}`, { headers: instructorHeaders() });
   return response.json();
 }
 
 export async function getInstructorStudent(studentId) {
-  const response = await fetch(`${API_BASE}/instructor/student/${studentId}`);
+  const response = await fetch(`${API_BASE}/instructor/student/${studentId}`, { headers: instructorHeaders() });
   return response.json();
 }
 
 export async function getInstructorRoster() {
-  const response = await fetch(`${API_BASE}/instructor/roster`);
+  const response = await fetch(`${API_BASE}/instructor/roster`, { headers: instructorHeaders() });
   return response.json();
 }

@@ -12,7 +12,7 @@ AutoTA generates unique, computationally verified problem variants for STEM cour
 - Domain-agnostic architecture with pluggable verifiers
 - Boolean algebra verifier (K-maps, truth tables, Quine-McCluskey)
 - Template-based variant generation
-- 79 comprehensive tests
+- 100 tests (79 Phase 1 + 21 quiz)
 - CLI interface with rich output
 
 ### Phase 2 — Student Web UI ✅
@@ -54,6 +54,11 @@ AutoTA generates unique, computationally verified problem variants for STEM cour
 - Student UI: mobile-first, sticky timer bar, progress dots, per-problem feedback
 - Instructor UI: QR code display, live polling dashboard (3s), results review with correct answers
 - Client-side QR code generation via `qrcode.react`
+- Token-based auth on all instructor endpoints (`AUTOTA_INSTRUCTOR_TOKEN` env var)
+- SQLite context manager — no connection leaks under concurrent load
+- CSV gradebook export (`GET /api/instructor/gradebook/export`)
+- React error boundaries on all quiz and dashboard components
+- 21 dedicated quiz tests (timer, auto-close, best-score tracking, grade writeback)
 
 ---
 
@@ -104,6 +109,14 @@ This creates `data/autota.db` with:
 # Frontend (port 5173) — separate terminal
 cd frontend && npm run dev
 ```
+
+**Optional — instructor auth token** (required before deploying):
+
+```bash
+export AUTOTA_INSTRUCTOR_TOKEN=your-secret-token
+```
+
+Without this, instructor endpoints are unprotected (dev-only convenience). The frontend reads the token from `VITE_INSTRUCTOR_TOKEN` in `frontend/.env.local`, or pass it via URL hash: `/instructor#token=your-secret-token`.
 
 ### 4. Access the application
 
@@ -201,10 +214,13 @@ autota verify --input output/example_kmap/ --type kmap_simplification
 | `POST` | `/api/quiz/{code}/submit` | Submit answers, get instant score |
 
 ### Instructor — Dashboard
+All instructor endpoints require `X-Instructor-Token` header when `AUTOTA_INSTRUCTOR_TOKEN` is set.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/instructor/dashboard` | Summary cards + assignment table |
 | `GET` | `/api/instructor/gradebook` | Full student × assignment matrix |
+| `GET` | `/api/instructor/gradebook/export` | Download gradebook as CSV |
 | `GET` | `/api/instructor/assignment/{id}` | Score distribution + per-problem breakdown |
 | `GET` | `/api/instructor/student/{id}` | Per-student all-assignment history |
 | `GET` | `/api/instructor/roster` | Student directory |
@@ -237,20 +253,23 @@ AutoTA/
 │   │   └── quine_mccluskey.py
 │   └── web/                        # Phase 2+ — Web backend
 │       ├── app.py                  # FastAPI application
-│       ├── db.py                   # DB init + connection
+│       ├── auth.py                 # Instructor token auth dependency
+│       ├── db.py                   # DB init, connection, context manager
 │       ├── seed.py                 # Seed 30 students + 8 assignments
 │       └── routes/
 │           ├── auth.py             # Name verification
 │           ├── assignment.py       # Assignment retrieval
 │           ├── submit.py           # Submission + grading
 │           ├── retry.py            # Phase 2.1 — Retry
-│           ├── instructor.py       # Phase 2.2 — Instructor dashboard
+│           ├── instructor.py       # Phase 2.2 — Instructor dashboard + CSV export
 │           └── quiz.py             # Phase 2.3 — Quiz mode
 ├── frontend/
 │   └── src/
-│       ├── App.jsx                 # Path-based routing
+│       ├── App.jsx                 # Path-based routing + error boundaries
 │       ├── api.js                  # API client
 │       ├── utils.js                # Utilities
+│       ├── components/
+│       │   └── ErrorBoundary.jsx   # React error boundary
 │       ├── screens/                # Student homework screens
 │       │   ├── NameCheck.jsx
 │       │   ├── Landing.jsx
@@ -280,7 +299,9 @@ AutoTA/
 │   ├── ui-prototype.jsx            # Student UI prototype
 │   ├── autota-instructor-prototype-v2.jsx
 │   └── autota-quiz-prototype.jsx
-├── tests/                          # 79 tests (Phase 1 + 2)
+├── tests/                          # 100 tests
+│   ├── test_quiz.py                # Phase 2.3 — 21 quiz logic tests
+│   └── ...                         # Phase 1 tests
 ├── data/                           # Gitignored — SQLite DB lives here
 └── pyproject.toml
 ```

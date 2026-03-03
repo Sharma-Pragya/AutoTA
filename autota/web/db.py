@@ -1,6 +1,7 @@
 """Database setup and operations for AutoTA web application."""
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -13,6 +14,23 @@ def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # Enable column access by name
     return conn
+
+
+@contextmanager
+def db_conn():
+    """Context manager that opens a connection and always closes it.
+
+    Usage:
+        with db_conn() as conn:
+            cursor = conn.cursor()
+            ...
+            conn.commit()   # only when writing
+    """
+    conn = get_db_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_db():
