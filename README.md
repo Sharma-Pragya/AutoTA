@@ -1,123 +1,152 @@
-# AutoTA - LLM-Powered Parameterized Assessment Generator
+# AutoTA — LLM-Powered Parameterized Assessment Generator
 
 AutoTA generates unique, computationally verified problem variants for STEM courses using LLMs. Instead of giving every student the same homework problem (which they can copy or feed to ChatGPT), AutoTA generates N unique variants of each problem with different parameters, each with a verified solution.
 
 **The core principle**: LLMs generate, deterministic code verifies. These two components are intentionally decoupled.
 
+---
+
 ## Current Status
 
-**Phase 1 - CLI Generation + Verification Pipeline** ✅
-- ✅ Domain-agnostic architecture with pluggable verifiers
-- ✅ Boolean algebra verifier (K-maps, truth tables, Quine-McCluskey)
-- ✅ Template-based variant generation
-- ✅ 79 comprehensive tests
-- ✅ CLI interface with rich output
+### Phase 1 — CLI Generation + Verification Pipeline ✅
+- Domain-agnostic architecture with pluggable verifiers
+- Boolean algebra verifier (K-maps, truth tables, Quine-McCluskey)
+- Template-based variant generation
+- 79 comprehensive tests
+- CLI interface with rich output
 
-**Phase 2 - Web Interface** ✅
-- ✅ React frontend with pixel-perfect UI
-- ✅ FastAPI backend with SQLite database
-- ✅ Student name verification
-- ✅ Auto-save with 3-second debounce
-- ✅ Format validation for Boolean expressions
-- ✅ Academic integrity attestation
-- ✅ Instant grading with Layer 3 verifier integration
+### Phase 2 — Student Web UI ✅
+- React 18 + Vite frontend (IBM Plex Sans/Mono, pixel-perfect prototype match)
+- FastAPI backend with SQLite database
+- Student name verification
+- Question navigation with collapsible menu
+- Auto-save with 3-second debounce
+- Client-side format validation for Boolean expressions
+- Academic integrity attestation
+- Instant grading via Layer 3 verifier integration
 
-**Phase 2.1 - Schema Hardening & Multi-Attempt System** ✅
-- ✅ Production-grade database schema (19 tables + 2 views)
-- ✅ Institutional hierarchy (courses, offerings, sections, enrollments)
-- ✅ Variant pool with 13+ variants per problem
-- ✅ Multi-attempt support with configurable max_attempts
-- ✅ Variant exclusion on retry (never see same variant twice)
-- ✅ Weighted scoring (K-map: 2 pts, follow-up: 1 pt)
-- ✅ Separated grading layer
-- ✅ Draft answers with auto-save
-- ✅ Attempt state machine
-- ✅ Retry UI with attempts remaining
+### Phase 2.1 — Schema Hardening & Multi-Attempt System ✅
+- Production-grade database schema (19 tables + 2 views)
+- Institutional hierarchy (courses, offerings, sections, enrollments)
+- Variant pool with 30+ variants per problem
+- Multi-attempt support with configurable max_attempts
+- Variant exclusion on retry (never see same variant twice)
+- Weighted scoring (K-map: 2 pts, follow-up: 1 pt)
+- Separated grading layer
+- Draft answers with auto-save
+- Attempt state machine with retry UI
 
-**Target Domain**: Digital logic (UCLA ECE M16) - Boolean algebra, K-maps, truth tables, logic gate analysis
+### Phase 2.2 — Instructor Dashboard ✅
+- Instructor dashboard at `/instructor`
+- 5 views: Dashboard, Gradebook, Assignment Detail, Student Drill-Down, Roster
+- Summary cards: active assignments, submission rates, class average
+- Full gradebook: 30 students × 8 assignments score matrix
+- Per-assignment: score distribution histogram, per-problem breakdown, per-student grades
+- Per-student: all-assignment history with per-problem answers and feedback
+- 30 seeded students across 2 sections, 8 assignments (hw, quiz, exam, project types)
 
-**Future Phases**: In-class quiz sessions, instructor dashboard, analytics
+### Phase 2.3 — In-Class Quiz Mode ✅
+- Synchronous timed quizzes: instructor projects QR code, students scan on phones
+- Server-authoritative timer (never trust client time); auto-closes on expiry
+- Unlimited retries: instant score after each submit, best score per problem kept
+- Graded by existing BooleanExpressionVerifier pipeline
+- On quiz close: best scores written to main grade tables (appear in instructor dashboard)
+- Student UI: mobile-first, sticky timer bar, progress dots, per-problem feedback
+- Instructor UI: QR code display, live polling dashboard (3s), results review with correct answers
+- Client-side QR code generation via `qrcode.react`
 
-## Features
-
-- 🎯 **Unique Problem Variants**: Generate dozens or hundreds of unique variants from a single spec
-- ✅ **Computational Verification**: Every solution is verified by deterministic Python code (never LLM-based)
-- 🔌 **Pluggable Architecture**: Easy to add new problem types and verifiers
-- 🚀 **Production Ready**: Batch generation, retry logic, detailed error reporting
-- 📊 **Rich CLI**: Beautiful terminal output with progress tracking and statistics
+---
 
 ## Quick Start
 
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- npm
+- Python 3.10+ via Anaconda (recommended — venv Python 3.14 has a broken pip)
+- Node.js 18+, npm
 
-### 1. Installation
+### 1. Install dependencies
 
 ```bash
-# Install Python dependencies
+# Python
 pip install -e .
 
-# Install frontend dependencies
-cd frontend
-npm install
-cd ..
+# Frontend
+cd frontend && npm install && cd ..
 ```
 
-### 2. Database Setup
+### 2. Set up the database
 
-The `data/` directory exists but the database file is not committed to git. You need to create and seed it:
+The database file (`data/autota.db`) is gitignored. Create and seed it:
 
 ```bash
-# Run migrations to create database schema
-sqlite3 data/autota.db < migrations/001_initial_schema.sql
-sqlite3 data/autota.db < migrations/002_schema_hardening.sql
+# Create schema + run migrations
+python migrations/run_004.py
 
-# Backfill variant pool from existing assignments
-python -m migrations.backfill_variant_pool
+# Seed with 30 students, 8 assignments, variant pool
+python autota/web/seed.py
 
-# Seed database with test data (3 students, 1 assignment, variant pool)
-./seed.sh
+# Seed a test quiz session (code: QZ5A3F)
+python migrations/seed_quiz.py
 ```
 
 This creates `data/autota.db` with:
 - 19 tables + 2 views
-- 3 test students (Pragya, Jane, Joe)
-- 1 assignment (Homework 5 - K-maps)
-- 39 variants in the pool (13 per problem type)
+- 30 test students across 2 sections
+- 8 assignments (hw3–hw6, quiz1–quiz2, midterm, da1)
+- Variant pool for K-map problems
+- Quiz session with code `QZ5A3F`
 
-### 3. Run the Web Application
+### 3. Run the application
 
 ```bash
-# Start both backend and frontend
-./dev.sh
+# Backend (port 8000) — use anaconda Python
+/path/to/anaconda3/bin/uvicorn autota.web.app:app --reload --port 8000
 
-# Or start separately:
-./start-backend.sh  # Backend on :8000
-./start-frontend.sh # Frontend on :5173
+# Frontend (port 5173) — separate terminal
+cd frontend && npm run dev
 ```
 
-### 4. Access the Application
+### 4. Access the application
 
-- Frontend: http://localhost:5173/?sid=UID123456789
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+| URL | Description |
+|-----|-------------|
+| `http://localhost:5173/?sid=UID123456789` | Student homework UI |
+| `http://localhost:5173/instructor` | Instructor dashboard |
+| `http://localhost:5173/instructor/quiz/QZ5A3F` | Instructor quiz control |
+| `http://localhost:5173/quiz/QZ5A3F?sid=UID123456789` | Student quiz UI |
+| `http://localhost:8000/docs` | API docs (Swagger) |
 
-**Test Accounts:**
+**Test accounts:**
 - Pragya Sharma: `sid=UID123456789`
 - Jane Bruin: `sid=UID987654321`
 - Joe Bruin: `sid=UID111222333`
 
-### CLI Usage (Phase 1)
+### 5. Reset quiz session for re-testing
 
 ```bash
-# Generate 5 K-map variants using CLI
+python -c "
+import sqlite3
+conn = sqlite3.connect('data/autota.db')
+conn.execute('DELETE FROM quiz_submissions WHERE quiz_session_id = 1')
+conn.execute('DELETE FROM quiz_participants WHERE quiz_session_id = 1')
+conn.execute(\"UPDATE quiz_sessions SET status='pending', started_at=NULL, closed_at=NULL WHERE code='QZ5A3F'\")
+conn.commit(); conn.close()
+print('Reset done')
+"
+```
+
+---
+
+## CLI Usage (Phase 1)
+
+```bash
+# Generate 5 K-map variants
 autota generate --spec specs/example_kmap.yaml --num 5
 
 # Verify existing variants
 autota verify --input output/example_kmap/ --type kmap_simplification
 ```
+
+---
 
 ## Architecture
 
@@ -151,49 +180,129 @@ autota verify --input output/example_kmap/ --type kmap_simplification
 └─────────────────┘
 ```
 
-## Problem Spec Format
+---
 
-Define problems using YAML:
+## API Endpoints
 
-```yaml
-problem_type: kmap_simplification
-topic: "Karnaugh Map Simplification"
-description: "Simplify a Boolean function using a 4-variable K-map"
-num_variants: 5
-parameters:
-  num_variables: 4
-  num_minterms: [6, 10]  # range
-  num_dont_cares: [0, 3]  # range
-  require_edge_wrap: true
-  variables: ["A", "B", "C", "D"]
-reference_material: "materials/hw5_kmap.pdf"  # optional
-answer_format: "boolean_expression"
-difficulty: "medium"
+### Student
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/verify-name` | Verify student identity |
+| `GET` | `/api/assignment/{student_id}` | Get assignment with variants |
+| `POST` | `/api/save-answer` | Auto-save draft answer |
+| `POST` | `/api/submit` | Submit all answers for grading |
+| `POST` | `/api/retry/{student_id}/{assignment_id}` | Start new attempt |
+
+### Quiz (Student)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/quiz/{code}/join` | Join quiz, draw variants |
+| `GET` | `/api/quiz/{code}/status` | Poll status + time remaining |
+| `POST` | `/api/quiz/{code}/submit` | Submit answers, get instant score |
+
+### Instructor — Dashboard
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/instructor/dashboard` | Summary cards + assignment table |
+| `GET` | `/api/instructor/gradebook` | Full student × assignment matrix |
+| `GET` | `/api/instructor/assignment/{id}` | Score distribution + per-problem breakdown |
+| `GET` | `/api/instructor/student/{id}` | Per-student all-assignment history |
+| `GET` | `/api/instructor/roster` | Student directory |
+
+### Instructor — Quiz
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/instructor/quiz/create` | Create new quiz session |
+| `GET` | `/api/instructor/quiz/{code}/meta` | Quiz metadata |
+| `POST` | `/api/instructor/quiz/{code}/start` | Start quiz (starts timer) |
+| `POST` | `/api/instructor/quiz/{code}/close` | End quiz + write grades |
+| `POST` | `/api/instructor/quiz/{code}/review` | Enter review mode |
+| `GET` | `/api/instructor/quiz/{code}/live` | Live stats (poll every 3s) |
+| `GET` | `/api/instructor/quiz/{code}/results` | Final results + per-problem breakdown |
+
+---
+
+## Project Structure
+
+```
+AutoTA/
+├── autota/
+│   ├── cli.py                      # Phase 1 CLI
+│   ├── models.py                   # Pydantic models
+│   ├── template_generator.py       # Variant generation
+│   ├── verify/                     # Phase 1 — Verification
+│   │   ├── base.py
+│   │   ├── registry.py
+│   │   ├── boolean_verifier.py
+│   │   └── quine_mccluskey.py
+│   └── web/                        # Phase 2+ — Web backend
+│       ├── app.py                  # FastAPI application
+│       ├── db.py                   # DB init + connection
+│       ├── seed.py                 # Seed 30 students + 8 assignments
+│       └── routes/
+│           ├── auth.py             # Name verification
+│           ├── assignment.py       # Assignment retrieval
+│           ├── submit.py           # Submission + grading
+│           ├── retry.py            # Phase 2.1 — Retry
+│           ├── instructor.py       # Phase 2.2 — Instructor dashboard
+│           └── quiz.py             # Phase 2.3 — Quiz mode
+├── frontend/
+│   └── src/
+│       ├── App.jsx                 # Path-based routing
+│       ├── api.js                  # API client
+│       ├── utils.js                # Utilities
+│       ├── screens/                # Student homework screens
+│       │   ├── NameCheck.jsx
+│       │   ├── Landing.jsx
+│       │   ├── Question.jsx
+│       │   ├── MainPage.jsx
+│       │   ├── Attestation.jsx
+│       │   ├── Review.jsx
+│       │   └── InstructorDashboard.jsx
+│       ├── quiz/                   # Phase 2.3 — Student quiz UI
+│       │   ├── QuizApp.jsx
+│       │   └── quizApi.js
+│       └── instructor/             # Phase 2.3 — Instructor quiz UI
+│           └── screens/
+│               └── InstructorQuiz.jsx
+├── migrations/
+│   ├── 002_schema_hardening.sql
+│   ├── 004_quiz_mode.sql           # quiz_submissions + quiz_participants
+│   ├── run_004.py                  # Safe migration runner (checks existing columns)
+│   ├── seed_quiz.py                # Seeds QZ5A3F test session
+│   └── backfill_variant_pool.py
+├── specs/
+│   ├── PHASE2_SPEC.md
+│   ├── PHASE2.1_SCHEMA_MIGRATION.md
+│   ├── PHASE2.2_INSTRUCTOR_DASHBOARD.md
+│   └── PHASE2.3_QUIZ_MODE.md
+├── docs/
+│   ├── ui-prototype.jsx            # Student UI prototype
+│   ├── autota-instructor-prototype-v2.jsx
+│   └── autota-quiz-prototype.jsx
+├── tests/                          # 79 tests (Phase 1 + 2)
+├── data/                           # Gitignored — SQLite DB lives here
+└── pyproject.toml
 ```
 
-## Generated Variant Format
+---
 
-Each variant is a JSON file:
+## Database Schema
 
-```json
-{
-  "variant_id": "uuid-here",
-  "problem_text": "Simplify F(A,B,C,D) with minterms m(0,2,5,7,8,10,13,15)...",
-  "parameters": {
-    "minterms": [0, 2, 5, 7, 8, 10, 13, 15],
-    "dont_cares": [],
-    "variables": ["A", "B", "C", "D"]
-  },
-  "solution": {
-    "expression": "B'D' + BD",
-    "method": "kmap"
-  },
-  "answer_format": "boolean_expression",
-  "metadata": {
-    "has_edge_wrap": true
-  }
-}
-```
+### Core Tables
+`students`, `assignments`, `problems`, `variant_pool`, `variant_assignments`, `submissions`, `grades`, `attempts`, `attempt_results`, `draft_answers`
+
+### Institutional Hierarchy
+`courses`, `course_offerings`, `instructors`, `sections`, `enrollments`
+
+### Quiz Mode (Phase 2.3)
+`quiz_sessions`, `quiz_submissions`, `quiz_participants`
+
+### Views
+- `v_student_attempt_status` — retry eligibility
+- `v_grade_report` — grade export
+
+---
 
 ## Adding New Problem Types
 
@@ -211,8 +320,7 @@ class MyVerifier(Verifier):
         return "my_problem_type"
 
     def verify(self, variant: ProblemVariant) -> VerificationResult:
-        # Deterministic verification logic here
-        # NO LLM calls allowed!
+        # Deterministic verification logic here — no LLM calls
         pass
 ```
 
@@ -229,6 +337,8 @@ problem_type: my_problem_type
 autota generate --spec specs/my_problem.yaml
 ```
 
+---
+
 ## Testing
 
 ```bash
@@ -242,145 +352,33 @@ pytest --cov=autota --cov-report=html
 pytest tests/test_boolean_verifier.py -v
 ```
 
-## Development
-
-```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Format code
-black autota/ tests/
-
-# Lint code
-ruff check autota/ tests/
-```
-
-## Project Structure
-
-```
-AutoTA/
-├── README.md
-├── .gitignore
-├── pyproject.toml              # Package configuration
-├── dev.sh                      # Start backend + frontend
-├── seed.sh                     # Database seeding
-├── autota/                     # Main package
-│   ├── cli.py                  # Phase 1 CLI
-│   ├── models.py               # Pydantic models
-│   ├── template_generator.py  # Variant generation
-│   ├── verify/                 # Phase 1 — Verification
-│   │   ├── base.py
-│   │   ├── registry.py
-│   │   ├── boolean_verifier.py
-│   │   └── quine_mccluskey.py
-│   └── web/                    # Phase 2 — Web backend
-│       ├── app.py              # FastAPI application
-│       ├── db.py               # Database utilities
-│       ├── seed.py             # Database seeding
-│       ├── variant_draw.py     # Phase 2.1 — Variant pool
-│       └── routes/
-│           ├── auth.py         # Name verification
-│           ├── assignment.py   # Assignment retrieval
-│           ├── submit.py       # Submission & grading
-│           └── retry.py        # Phase 2.1 — Retry
-├── frontend/                   # Phase 2 — React UI
-│   └── src/
-│       ├── screens/            # UI screens
-│       ├── components/         # Reusable components
-│       ├── api.js              # API client
-│       ├── utils.js            # Format validation
-│       └── styles.js           # Style constants
-├── migrations/
-│   ├── 001_initial_schema.sql
-│   ├── 002_schema_hardening.sql
-│   └── backfill_variant_pool.py
-├── specs/
-│   ├── PHASE2_SPEC.md
-│   └── PHASE2.1_SCHEMA_MIGRATION.md
-├── tests/                      # 79 Phase 1 tests
-├── docs/
-│   ├── phase2/                 # Phase 2 documentation
-│   └── ui-prototype.jsx
-└── data/                       # Gitignored — SQLite DB
-```
+---
 
 ## Design Principles
 
 1. **Domain-Agnostic Core**: The orchestrator, CLI, models, and generator work for any problem type
-2. **Verification is Never LLM-Based**: Verifiers are deterministic Python - no API calls
+2. **Verification is Never LLM-Based**: Verifiers are deterministic Python — no API calls
 3. **Fail Loudly**: Failed variants are flagged clearly, never silently passed
-4. **Everything is JSON**: Variants, results, reports - all structured data
+4. **Everything is JSON**: Variants, results, reports — all structured data
 5. **Pluggable Verifiers**: Add new problem types without modifying core code
+6. **Server-Authoritative**: Quiz timers and grading are always computed server-side
 
-## API Endpoints
-
-### Phase 2
-- `POST /api/verify-name` — Verify student identity
-- `GET /api/assignment/{student_id}` — Get assignment with variants
-- `POST /api/save-answer` — Auto-save draft answer
-- `POST /api/submit` — Submit all answers for grading
-
-### Phase 2.1
-- `POST /api/retry/{student_id}/{assignment_id}` — Start new attempt
-  - Verifies attempt_number < max_attempts
-  - Draws fresh variants excluding prior ones
-  - Returns new attempt info
-
-## Database Schema (Phase 2.1)
-
-### Core Tables
-- `students`, `assignments`, `problems`, `variant_assignments`, `submissions`, `attempts`
-
-### Institutional Hierarchy
-- `courses`, `course_offerings`, `instructors`, `sections`, `enrollments`
-
-### Phase 2.1 Extensions
-- `variant_pool` — Reusable variant library
-- `draft_answers` — Auto-save layer
-- `grades` — Separated grading metadata
-- `attempt_results` — Aggregate scores
-- `quiz_sessions` — Future: in-class quizzes
-
-### Views
-- `v_student_attempt_status` — Retry eligibility
-- `v_grade_report` — Grade export
+---
 
 ## Roadmap
 
 - [x] Phase 1: CLI generation + verification pipeline
-- [x] Phase 2: Web UI with instant grading
-- [x] Phase 2.1: Schema hardening & multi-attempt
-- [ ] Phase 3: In-class quiz sessions with QR codes
-- [ ] Phase 4: Instructor dashboard & analytics
-- [ ] Phase 5: Additional problem types (circuits, truth tables)
-- [ ] Phase 6: LMS integration (Canvas, Gradescope)
-- [ ] Phase 7: Advanced analytics & learning insights
+- [x] Phase 2: Student web UI with instant grading
+- [x] Phase 2.1: Schema hardening & multi-attempt system
+- [x] Phase 2.2: Instructor dashboard & gradebook
+- [x] Phase 2.3: In-class quiz mode with live stats
+- [ ] Phase 3: Deployment (serve frontend via FastAPI, production hosting)
+- [ ] Phase 4: Additional problem types (circuits, truth tables, FSMs)
+- [ ] Phase 5: LMS integration (Canvas, Gradescope CSV export)
+- [ ] Phase 6: Advanced analytics & learning insights
 
-## Contributing
-
-Contributions welcome! Key areas:
-
-- New verifiers for different problem types
-- Improved verification algorithms
-- Better prompt engineering for higher success rates
-- Documentation and examples
+---
 
 ## License
 
 [Add your license here]
-
-## Citation
-
-If you use AutoTA in your research or teaching, please cite:
-
-```
-[Add citation when published]
-```
-
-## Contact
-
-[Add contact information]
-
----
-
-Built with ❤️ for educators who want to maintain academic integrity while leveraging AI to scale personalized learning.
