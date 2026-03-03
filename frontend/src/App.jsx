@@ -6,13 +6,28 @@ import MainPage from './screens/MainPage';
 import AttestationPage from './screens/Attestation';
 import ReviewPage from './screens/Review';
 import InstructorDashboard from './screens/InstructorDashboard';
+import QuizApp from './quiz/QuizApp';
+import InstructorQuiz from './instructor/screens/InstructorQuiz';
 import { getAssignment, saveAnswer, submitAnswers, retryAssignment } from './api';
 import { buildMenuStructure } from './utils';
 
 function App() {
-  // Path-based routing: /instructor goes to instructor UI
-  if (window.location.pathname === '/instructor') {
+  // Path-based routing
+  const _path = window.location.pathname;
+  const _params = new URLSearchParams(window.location.search);
+
+  if (_path === '/instructor') {
     return <InstructorDashboard />;
+  }
+
+  const _quizMatch = _path.match(/^\/quiz\/([A-Z0-9]+)$/i);
+  if (_quizMatch) {
+    return <QuizApp code={_quizMatch[1].toUpperCase()} studentId={_params.get('sid')} />;
+  }
+
+  const _instrQuizMatch = _path.match(/^\/instructor\/quiz\/([A-Z0-9]+)$/i);
+  if (_instrQuizMatch) {
+    return <InstructorQuiz code={_instrQuizMatch[1].toUpperCase()} />;
   }
 
   const [screen, setScreen] = useState("loading");

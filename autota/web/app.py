@@ -40,10 +40,11 @@ async def health():
 
 
 # Import and include routers
-from autota.web.routes import auth, assignment, submit, retry, instructor
+from autota.web.routes import auth, assignment, submit, retry, instructor, quiz
 
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(assignment.router, prefix="/api", tags=["assignment"])
 app.include_router(submit.router, prefix="/api", tags=["submit"])
 app.include_router(retry.router)
 app.include_router(instructor.router)
+app.include_router(quiz.router)
