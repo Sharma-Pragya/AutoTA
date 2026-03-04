@@ -19,8 +19,15 @@ echo "Press Ctrl+C in each terminal to stop"
 echo "======================================="
 echo ""
 
+# Resolve uvicorn: prefer local venv
+if [ -f ".venv/bin/uvicorn" ]; then
+    UVICORN_CMD=".venv/bin/uvicorn"
+else
+    UVICORN_CMD="python3 -m uvicorn"
+fi
+
 # Start backend
-uvicorn autota.web.app:app --reload --port 8000 &
+$UVICORN_CMD autota.web.app:app --reload --port 8000 &
 
 # Wait a moment
 sleep 2

@@ -65,49 +65,29 @@ AutoTA generates unique, computationally verified problem variants for STEM cour
 ## Quick Start
 
 ### Prerequisites
-- Python 3.10+ via Anaconda (recommended — venv Python 3.14 has a broken pip)
+- Python 3.9+
 - Node.js 18+, npm
 
-### 1. Install dependencies
+### 1. One-time setup
 
 ```bash
-# Python
-pip install -e .
-
-# Frontend
-cd frontend && npm install && cd ..
+./setup.sh
 ```
 
-### 2. Set up the database
+This creates a `.venv`, installs all Python dependencies, installs frontend npm packages, and seeds the database (30 students, 8 assignments, quiz session `QZ5A3F`).
 
-The database file (`data/autota.db`) is gitignored. Create and seed it:
+### 2. Run the demo
 
 ```bash
-# Create schema + run migrations
-python migrations/run_004.py
-
-# Seed with 30 students, 8 assignments, variant pool
-python autota/web/seed.py
-
-# Seed a test quiz session (code: QZ5A3F)
-python migrations/seed_quiz.py
+./demo.sh
 ```
 
-This creates `data/autota.db` with:
-- 19 tables + 2 views
-- 30 test students across 2 sections
-- 8 assignments (hw3–hw6, quiz1–quiz2, midterm, da1)
-- Variant pool for K-map problems
-- Quiz session with code `QZ5A3F`
+Opens 4 browser tabs automatically (student homework, instructor dashboard, instructor quiz control, student quiz view) with both servers running. Press Ctrl+C to stop.
 
-### 3. Run the application
+### 3. Run for development
 
 ```bash
-# Backend (port 8000) — use anaconda Python
-/path/to/anaconda3/bin/uvicorn autota.web.app:app --reload --port 8000
-
-# Frontend (port 5173) — separate terminal
-cd frontend && npm run dev
+./dev.sh
 ```
 
 **Optional — instructor auth token** (required before deploying):
